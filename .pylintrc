@@ -1,0 +1,5 @@
+[MESSAGES CONTROL]
+# Set the linting for string quotes
+string-quote=single
+triple-quote=double
+docstring-quote=

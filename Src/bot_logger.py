@@ -34,19 +34,19 @@ class TextHandler(logging.StreamHandler):
 
     def emit(self, record):
         msg = self.format(record)
-        self.textctrl.config(state="normal")
+        self.textctrl.config(state='normal')
         self.insert_ansi(msg, ''
                          "end")
-        #self.textctrl.insert("end", "\n")
+        # self.textctrl.insert("end", "\n")
         self.flush()
         # scroll to the bottom
-        self.textctrl.see("end")
-        self.textctrl.config(state="disabled")
+        self.textctrl.see('end')
+        self.textctrl.config(state='disabled')
 
     # Functions to color messages according to utf-8 color codes set by formatter
-    def insert_ansi(self, txt, index="insert"):
-        first_line, first_char = map(int, str(self.textctrl.index(index)).split("."))
-        if index == "end":
+    def insert_ansi(self, txt, index='insert'):
+        first_line, first_char = map(int, str(self.textctrl.index(index)).split('.'))
+        if index == 'end':
             first_line -= 1
 
         lines = txt.splitlines()

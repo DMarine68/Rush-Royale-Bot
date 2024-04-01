@@ -23,16 +23,16 @@ def download(url, filename):
     r = requests.get(url, stream=True, allow_redirects=True)
     if r.status_code != 200:
         r.raise_for_status()  # Will only raise for 4xx codes, so...
-        raise RuntimeError(f"Request to {url} returned status code {r.status_code}")
+        raise RuntimeError(f'Request to {url} returned status code {r.status_code}')
     file_size = int(r.headers.get('Content-Length', 0))
 
     path = pathlib.Path(filename).expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    desc = "(Unknown total file size)" if file_size == 0 else ""
+    desc = '(Unknown total file size)' if file_size == 0 else ""
     r.raw.read = functools.partial(r.raw.read, decode_content=True)  # Decompress if needed
-    with tqdm.wrapattr(r.raw, "read", total=file_size, desc=desc) as r_raw:
-        with path.open("wb") as f:
+    with tqdm.wrapattr(r.raw, 'read', total=file_size, desc=desc) as r_raw:
+        with path.open('wb') as f:
             shutil.copyfileobj(r_raw, f)
 
     return path
@@ -41,19 +41,21 @@ def download(url, filename):
 # Moves selected units from collection folder to deck folder for unit recognition options
 def select_units(units):
     if os.path.isdir('units'):
-        [os.remove('units/' + unit) for unit in os.listdir("units")]
+        [os.remove(os.path.join('units', unit)) for unit in os.listdir('units')]
     else:
         os.mkdir('units')
     # Read and write all images
     for new_unit in units:
         try:
-            cv2.imwrite('units/' + new_unit, cv2.imread('all_units/' + new_unit))
+            path1 = os.path.join('units', new_unit)
+            path2 = os.path.join('all_units', new_unit)
+            cv2.imwrite(path1, cv2.imread(path2))
         except Exception as e:
             print(e)
             print(f'{new_unit} not found')
             continue
     # Verify enough units were selected
-    return len(os.listdir("units")) > 4
+    return len(os.listdir('units')) > 4
 
 
 def start_bot_class(logger):
@@ -63,8 +65,9 @@ def start_bot_class(logger):
     bot = bot_core.Bot()
     return bot
 
+
 # Loop for combat actions
-def combat_loop(bot, combat, grid_df, mana_targets, user_target='demon_hunter.png'):  
+def combat_loop(bot, combat, grid_df, mana_targets, user_target='demon_hunter.png'):
     time.sleep(0.2)
 
     if combat <= 1:
@@ -79,9 +82,11 @@ def combat_loop(bot, combat, grid_df, mana_targets, user_target='demon_hunter.pn
     grid_df, unit_series, merge_series, df_groups, info = bot.try_merge(prev_grid=grid_df, merge_target=user_target)
     return grid_df, unit_series, merge_series, df_groups, info
 
+
 def spawn_units(bot, num_units=4):
     for _ in range(num_units):
         bot.click(450, 1360)
+
 
 # Run the bot
 def bot_loop(bot, info_event):
@@ -124,10 +129,10 @@ def bot_loop(bot, info_event):
     # Main loop
     bot.logger.debug(f'Bot mainloop started')
     # Wait for game to load
-    while (not bot.bot_stop):
+    while not bot.bot_stop:
         # Pass shop_targets
         bot.shop_item = shop_target
-        bot.store_visited = False # Reset the store_visited attribute at the beginning of each loop iteration
+        bot.store_visited = False  # Reset the store_visited attribute at the beginning of each loop iteration
         # Fetch screen and check state
         output = bot.battle_screen(start=False)
         if output[1] == 'fighting':
@@ -137,7 +142,7 @@ def bot_loop(bot, info_event):
             wait = 0
             combat += 1
             if combat > max_loops:
-                bot.restart_RR()
+                bot.restart_rr()
                 combat = 0
                 continue
             elif bot.bot_stop:
@@ -147,9 +152,10 @@ def bot_loop(bot, info_event):
                 if any([(bot.battle_screen(start=False)[0] == 'shaman_opponent.png').any(axis=None) for i in range(1)]):
                     continue
                 bot.logger.warning('Leaving game')
-                bot.restart_RR(quick_disconnect=True)
+                bot.restart_rr(quick_disconnect=True)
             # Combat Section
-            grid_df, bot.unit_series, bot.merge_series, bot.df_groups, bot.info = combat_loop(bot, combat, grid_df, user_level, user_target)
+            grid_df, bot.unit_series, bot.merge_series, bot.df_groups, bot.info = combat_loop(bot, combat, grid_df,
+                                                                                              user_level, user_target)
             bot.grid_df = grid_df.copy()
             bot.combat = combat
             bot.output = output[1]
@@ -158,7 +164,7 @@ def bot_loop(bot, info_event):
             # Wait until late stage in combat then if consistency is ok and not stagnate save all units for ML model
             if combat == 25 and 5 < grid_df['Age'].mean() < 50 and train_ai:
                 bot_perception.add_grid_to_dataset()
-        elif (output[1] == 'home'):
+        elif output[1] == 'home':
             if watch_ad:
                 [bot.watch_ads() for i in range(3)]
                 watch_ad = False
@@ -169,15 +175,17 @@ def bot_loop(bot, info_event):
                 bot.request_clan_chat(user_clan_request_epic, user_clan_request_common_rare)
                 clan_request = False
             if (watch_ad == False) and (clan_collect == False) and (clan_request == False):
-                output = bot.battle_screen(start=True, pve=user_pve, clan_tournament=user_clan_tournament, floor=user_floor)
+                output = bot.battle_screen(start=True, pve=user_pve, clan_tournament=user_clan_tournament,
+                                           floor=user_floor)
         else:
             combat = 0
             bot.logger.info(f'{output[1]}, wait count: {wait}')
-            output = bot.battle_screen(start=False, pve=user_pve, clan_tournament=user_clan_tournament, floor=user_floor)
+            output = bot.battle_screen(start=False, pve=user_pve, clan_tournament=user_clan_tournament,
+                                       floor=user_floor)
             wait += 1
             if wait > 15:
                 bot.logger.warning('RESTARTING')
-                bot.restart_RR(),
+                bot.restart_rr(),
                 wait = 0
 
 
@@ -193,7 +201,8 @@ def check_scrcpy(logger):
                 if not member.endswith('/'):  # Exclude directories
                     # Extract the file directly into the .scrcpy folder
                     extracted_path = os.path.join('.scrcpy', os.path.basename(member))
-                    os.makedirs(os.path.dirname(extracted_path), exist_ok=True)  # Create the directory if it doesn't exist
+                    os.makedirs(os.path.dirname(extracted_path),
+                                exist_ok=True)  # Create the directory if it doesn't exist
                     with zip_ref.open(member) as source, open(extracted_path, 'wb') as target:
                         shutil.copyfileobj(source, target)
         # Verify

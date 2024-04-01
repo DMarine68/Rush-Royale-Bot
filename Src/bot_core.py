@@ -19,14 +19,16 @@ class Bot:
 
     def __init__(self, device=None):
         self.bot_stop = False
-        self.combat = self.output = self.grid_df = self.unit_series = self.merge_series = self.df_groups = self.info = self.combat_step = None
-        os.makedirs("units", exist_ok=True)
-        self.selected_units = os.listdir("units")
+        self.combat = self.output = self.grid_df = self.unit_series = self.merge_series = self.df_groups = None
+        self.info = self.combat_step = None
+
+        os.makedirs('units', exist_ok=True)
+        self.selected_units = os.listdir('units')
         self.logger = logging.getLogger('__main__')
         if device is None:
             device = port_scan.get_device()
         if not device:
-            raise Exception("No device found!")
+            raise Exception('No device found!')
         self.device = device
         self.bot_id = self.device.split(':')[-1]
         self.shell(f'.scrcpy\\adb connect {self.device}')
@@ -34,7 +36,7 @@ class Bot:
         self.shell('monkey -p com.my.defense 1')
         # Check if 'bot_feed.png' exists
         if not os.path.isfile(f'bot_feed_{self.bot_id}.png'):
-            self.getScreen()
+            self.get_screen()
         self.screenRGB = cv2.imread(f'bot_feed_{self.bot_id}.png')
         self.client = Client(device=self.device)
         # Start scrcpy client
@@ -70,7 +72,7 @@ class Bot:
     # Swipe on combat grid to merge units
     def swipe(self, start, end, menu_scrolling=False):
         boxes, box_size = get_grid()
-        # Offset from box edge 
+        # Offset from box edge
         offset = -143 if menu_scrolling else 10 # (box[0,0] starts at [153,945]) with an offset of -143, the bot will scroll 10 pixels from the edge to avoid other elements
         self.client.control.swipe(*boxes[start[0], start[1]] + offset, *boxes[end[0], end[1]] + offset, 20, 1 / 60)
 
@@ -79,7 +81,7 @@ class Bot:
         self.client.control.keycode(key)
 
     # Force restart the game through ADC, or spam 10 disconnects to abandon match
-    def restart_RR(self, quick_disconnect=False):
+    def restart_rr(self, quick_disconnect=False):
         if quick_disconnect:
             for i in range(15):
                 self.shell('monkey -p com.my.defense 1')  # disconnects really quick for unknown reasons
@@ -92,7 +94,7 @@ class Bot:
         time.sleep(10)  # wait for app to load
 
     # Take screenshot of device screen and load pixel values
-    def getScreen(self):
+    def get_screen(self):
         bot_id = self.device.split(':')[-1]
         p = Popen(['.scrcpy\\adb', 'exec-out', 'screencap', '-p', '>', f'bot_feed_{bot_id}.png'], shell=True)
         p.wait()
@@ -119,7 +121,7 @@ class Bot:
         if not target in valid_targets:
             return "INVALID TARGET"
         if new:
-            self.getScreen()
+            self.get_screen()
         imgSrc = f'icons/{target}.png'
         img_rgb = self.screenRGB
         img_gray = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2GRAY)
@@ -148,7 +150,7 @@ class Bot:
         current_icons = []
         # Update screen and load screenshot as grayscale
         if new:
-            self.getScreen()
+            self.get_screen()
         img_rgb = self.screenRGB
         img_gray = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2GRAY)
         # Check every target in dir
@@ -178,7 +180,7 @@ class Bot:
         boxes, box_size = get_grid()
         # should be enabled by default
         if new:
-            self.getScreen()
+            self.get_screen()
         box_list = boxes.reshape(15, 2)
         names = []
         if not os.path.isdir('OCR_inputs'):
@@ -272,7 +274,7 @@ class Bot:
                     merge_df = self.merge_special_unit(df_split, merge_series_target, special_type='harlequin.png')
                     break
         return merge_df
-    
+
     # Scrapper merge
     # Will stop any merge with dps unit that's higher than rank 2
     def scrapper_merge(self, df_split, merge_target, merge_series, merge_series_with_scrapper, target='knight_statue.png'):
@@ -285,7 +287,7 @@ class Bot:
                 # Prevent scrapper from eating merge targets above rank 2
                 if target == merge_target and rank > 2:
                     break
-                
+
                 merge_series_target = adv_filter_keys(merge_series_with_scrapper, units=['scrapper.png', target], ranks=rank)
 
                 if len(merge_series_target.index) == 2:
@@ -304,7 +306,7 @@ class Bot:
         merge_series = unit_series.copy()
         # Remove empty groups
         merge_series = adv_filter_keys(merge_series, units='empty.png', remove=True)
-        
+
         if self.block_merging():
             return grid_df, unit_series, merge_series, merge_df, info
         else:
@@ -386,12 +388,12 @@ class Bot:
                 # Preserve 2 highest knight statues
                 for _ in range(2):
                     merge_series = preserve_unit(merge_series, target='knight_statue.png')
-                
+
             ####### EARTH ELEMENTAL #######
             if 'earth_elemental.png' in self.selected_units:
                 for _ in range(2):
                     merge_series = preserve_unit(merge_series, target='earth_elemental.png')
-            
+
             ####### CHEMIST #######
             if 'chemist.png' in self.selected_units:
                 merge_series = preserve_unit(merge_series, target='chemist.png', keep_min=False)
@@ -399,7 +401,7 @@ class Bot:
             ####### COLD MAGE #######
             if 'cold_mage.png' in self.selected_units:
                 merge_series = preserve_unit(merge_series, target='cold_mage.png', keep_min=False)
-                
+
             # Select stuff to merge
             merge_series = merge_series[merge_series >= 2]  # At least 2 units
             merge_series = adv_filter_keys(merge_series, ranks=7, remove=True)  # Remove max ranks
@@ -531,7 +533,7 @@ class Bot:
             return True
         else:
             return False
-            
+
 
     def wait_for_match_start(self):
         for i in range(20):
@@ -541,7 +543,7 @@ class Bot:
             self.logger.info(f'Waiting for match to start {i}')
             if avail_buttons['icon'].isin(['back_button.png', 'fighting.png']).any():
                 break
-    
+
     def get_treasure_map_to_click(self):
         if self.config.getboolean('bot', 'treasure_map_green') or self.config.getboolean('bot', 'treasure_map_gold'):
             df = self.get_current_icons(available=True)
@@ -631,7 +633,7 @@ class Bot:
                         self.click(*shop_item_pos_dict[item])
                         time.sleep(0.5)
                         avail_buttons = self.get_current_icons(available=True)
-                        if (item == 1): 
+                        if (item == 1):
                             self.logger.warning(f'Claimed free gift {item}!')
                         if (avail_buttons == 'shop_gift_claim.png').any(axis=None):
                             pos_gift_button = get_button_pos(avail_buttons, 'shop_gift_claim.png')
@@ -674,7 +676,7 @@ class Bot:
                 # Continue swiping to find roulette ad button
                 [self.swipe([2, 0], [0, 0], menu_scrolling=True) for i in range(4)]
                 self.click(10, 600)  # stop scroll
-                
+
     def collect_clan_chat(self):
         self.click_button(np.array([650, 1515])) # click clan icon
         time.sleep(1)
@@ -737,7 +739,7 @@ class Bot:
                     # Continue swiping to find requested unit
                     [self.swipe([2, 0], [0, 0]) for i in range(2)]
                     time.sleep(0.5)
-                    self.click(80, 600)  # stop scroll            
+                    self.click(80, 600)  # stop scroll
 
     def watch_ads(self):
         avail_buttons = self.get_current_icons(available=True)
@@ -793,7 +795,7 @@ class Bot:
                     self.shell(f'input keyevent {const.KEYCODE_BACK}')  #Force back
                 self.logger.info(f'AD TIME {i} {status}')
             # Restart game if can't escape ad
-            self.restart_RR()
+            self.restart_rr()
 
 
 ####
