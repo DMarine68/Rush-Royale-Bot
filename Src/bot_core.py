@@ -21,6 +21,7 @@ class Bot:
         self.bot_stop = False
         self.combat = self.output = self.grid_df = self.unit_series = self.merge_series = self.df_groups = None
         self.info = self.combat_step = None
+        self.unit_data = bot_perception.get_unit_data()
 
         os.makedirs('units', exist_ok=True)
         self.selected_units = os.listdir('units')
@@ -300,7 +301,7 @@ class Bot:
         info = ''
         merge_df = None
         names = self.scan_grid(new=False)
-        grid_df = bot_perception.grid_status(names, prev_grid=prev_grid)
+        grid_df = bot_perception.grid_status(names, self.unit_data, None)
         df_split, unit_series, df_groups, group_keys = grid_meta_info(grid_df)
         # Select stuff to merge
         merge_series = unit_series.copy()

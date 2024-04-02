@@ -44,6 +44,12 @@ def select_units(units):
         [os.remove(os.path.join('units', unit)) for unit in os.listdir('units')]
     else:
         os.mkdir('units')
+
+    if 'sharpshooter.png' in units:
+        units.append('sharpshooter_active.png')
+    if 'crystal.png' in units:
+        units.append('crystal_high_arcanist.png')
+
     # Read and write all images
     for new_unit in units:
         try:

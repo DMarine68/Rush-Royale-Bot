@@ -24,6 +24,9 @@ class Constants:
 class RR_bot:
 
     def __init__(self):
+
+        self.root = create_base()
+
         # Option vars
         self.ads_var = IntVar()
         self.pve_var = IntVar()
@@ -53,7 +56,6 @@ class RR_bot:
         self.config = configparser.ConfigParser()
         self.config.read('config.ini')
         # Create tkinter window base
-        self.root = create_base()
 
         # Add frames
         self.setup_options_frame()
@@ -146,15 +148,14 @@ class RR_bot:
 
     # Update config file
     def save_config(self):
-        # Update config file
-        floor_var = int(self.floor.get())
+        # Update config
         card_level = [var.get() for var in self.mana_vars] * np.arange(1, 6)
         card_level = card_level[card_level != 0]
         shop_item = [var.get() for var in self.shop_vars] * np.arange(1, 7)
         shop_item = shop_item[shop_item != 0]
 
         self.config.read('config.ini')
-        self.config['bot']['floor'] = str(floor_var)
+        self.config['bot']['floor'] = str(self.floor.get())
         self.config['bot']['mana_level'] = np.array2string(card_level, separator=',')[1:-1]
         self.config['bot']['shop_item'] = np.array2string(shop_item, separator=',')[1:-1]
         self.config['bot']['pve'] = str(bool(self.pve_var.get()))
@@ -315,35 +316,35 @@ def create_options(self, frame, config):
         self.request_common_rare_var.set(placeholder_common_rare)
 
     # Mana level targets
-    # todo: fix this...?
     Label(frame, text='Mana Level Targets', justify=LEFT).grid(row=2, column=0, sticky=W)
     stored_values = np.fromstring(config['bot']['mana_level'], dtype=int, sep=',')
-    mana_vars = [IntVar(value=int(i in stored_values)) for i in range(1, 6)]
+    self.mana_vars = [IntVar(value=int(i in stored_values)) for i in range(1, 6)]
     [
-        Checkbutton(frame, text=f'Card {i + 1}', variable=mana_vars[i], justify=LEFT).grid(row=2, column=i + 1)
+        Checkbutton(frame, text=f'Card {i + 1}', variable=self.mana_vars[i], justify=LEFT).grid(row=2, column=i + 1)
         for i in range(5)
     ]
 
     # Shop item targets
-    # todo: fix this...?
     Label(frame, text='Shop Item Targets', justify=LEFT).grid(row=3, column=0, sticky=W)
     stored_values = np.fromstring(config['bot']['shop_item'], dtype=int, sep=',')
-    shop_vars = [IntVar(value=int(i in stored_values)) for i in range(1, 7)]
+    self.shop_vars = [IntVar(value=int(i in stored_values)) for i in range(1, 7)]
     [
-        Checkbutton(frame, text=f'Shop {i + 1}', variable=shop_vars[i], justify=LEFT).grid(row=3, column=i + 1)
+        Checkbutton(frame, text=f'Shop {i + 1}', variable=self.shop_vars[i], justify=LEFT).grid(row=3, column=i + 1)
         for i in range(6)
     ]
 
     # Dungeon Floor
     Label(frame, text='Dungeon Floor', justify=LEFT).grid(row=4, column=0, sticky=W)
-    floor = Entry(frame, name='floor_entry', width=5)
-    if config.has_option('bot', 'floor'):
-        floor.insert(0, config['bot']['floor'])
+    self.floor = StringVar(value=str(config.get('bot', 'floor', fallback="1")))
+    tmp_floor = int(self.floor.get())
+    if tmp_floor <= 0:
+        self.floor = "1"
+    elif tmp_floor > 13:
+        self.floor = "13"
 
-    # Button(frame, text='test', command=lambda: testcmd2(self)).grid(row=4, column=1)
+    Entry(frame, name='floor_entry', textvariable=self.floor, width=5).grid(row=4, column=1)
 
-    floor.grid(row=4, column=1)
-
+    # Button(frame, text='test', command=lambda: self.save_config(self)).grid(row=4, column=1)
 
 def create_base():
     root = Tk()
