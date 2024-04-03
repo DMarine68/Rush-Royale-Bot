@@ -1,11 +1,10 @@
-import tkinter
-from tkinter import *
-import os
-import numpy as np
-import threading
-import logging
 import configparser
+import os
+import threading
 import traceback
+from tkinter import *
+
+import numpy as np
 
 # internal
 import bot_handler
@@ -26,6 +25,7 @@ class RR_bot:
     def __init__(self):
 
         self.root = create_base()
+        self.selected_units = []
 
         # Option vars
         self.ads_var = IntVar()
@@ -40,7 +40,6 @@ class RR_bot:
         self.mana_vars = [IntVar()]
         self.shop_vars = [IntVar()]
         self.floor = StringVar()
-        self.selected_units = None
 
         self.grid_dump = None
         self.unit_dump = None
@@ -73,7 +72,7 @@ class RR_bot:
         self.logger.info('Exiting GUI')
         self.logger.handlers.clear()
         self.thread_run.join()
-        self.thread_init.join()
+        # self.thread_init.join() # I don't think this is valid?
         self.root.destroy()
         try:
             self.bot_instance.client.stop()
@@ -149,9 +148,9 @@ class RR_bot:
     # Update config file
     def save_config(self):
         # Update config
-        card_level = [var.get() for var in self.mana_vars] * np.arange(1, 6)
+        card_level = np.array([var.get() for var in self.mana_vars]) * np.arange(1, 6)
         card_level = card_level[card_level != 0]
-        shop_item = [var.get() for var in self.shop_vars] * np.arange(1, 7)
+        shop_item = np.array([var.get() for var in self.shop_vars]) * np.arange(1, 7)
         shop_item = shop_item[shop_item != 0]
 
         self.config.read('config.ini')
@@ -178,9 +177,11 @@ class RR_bot:
     def update_units(self):
         self.selected_units = self.config['bot']['units'].replace(' ', '').split(',')
         self.logger.info(f'Selected units: {", ".join(self.selected_units)}')
-        if not bot_handler.select_units([unit + '.png' for unit in self.selected_units]):
-            valid_units = ' '.join(os.listdir("all_units")).replace('.png', '').split(' ')
-            self.logger.info(f'Invalid units in config file! Valid units: {valid_units}')
+        self.selected_units = bot_handler.select_units([unit + '.png' for unit in self.selected_units])
+
+        # if not bot_handler.select_units([unit + '.png' for unit in self.selected_units]):
+        #     valid_units = ' '.join(os.listdir("all_units")).replace('.png', '').split(' ')
+        #     self.logger.info(f'Invalid units in config file! Valid units: {valid_units}')
 
     # Run the bot
     def start_bot(self):
@@ -197,6 +198,7 @@ class RR_bot:
         self.bot_instance.bot_stop = False
         self.bot_instance.logger = self.logger
         self.bot_instance.config = self.config
+        self.bot_instance.selected_units = self.selected_units
 
         bot = self.bot_instance
         # Start bot thread

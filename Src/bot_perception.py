@@ -1,4 +1,6 @@
 import os
+import uuid
+
 import numpy as np
 import pandas as pd
 import cv2
@@ -12,8 +14,7 @@ import pickle
 #### Unit type recognition
 ###
 
-def get_image_keypoints_and_descriptors(path):
-    image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+def get_image_keypoints_and_descriptors(image):
     size = 25
     orb = cv2.ORB.create(nfeatures=500,  # The maximum number of features to retain.
                          scaleFactor=1.2,  # Pyramid decimation ratio, greater than 1
@@ -42,7 +43,8 @@ def get_unit_data():
         unit_name = file.replace('.png', '')
 
         path = os.path.join('all_units', file)
-        keypoints, descriptors = get_image_keypoints_and_descriptors(path)
+        img = cv2.imread(path)
+        keypoints, descriptors = get_image_keypoints_and_descriptors(img)
         unit_data[unit_name] = {
             'keypoints': keypoints,
             'descriptors': descriptors
@@ -50,44 +52,11 @@ def get_unit_data():
     return unit_data
 
 
-# Get most common pixel RGB value in image
-def get_color(filename, crop=False):
-    unit_img = cv2.imread(filename)
-    if crop:
-        unit_img = unit_img[15:15 + 90, 17:17 + 90]
-    unit_img = cv2.cvtColor(unit_img, cv2.COLOR_BGR2RGB)
-    # Flatten to pixel values
-    flat_img = unit_img.reshape(-1, unit_img.shape[2])
-    flat_img_round = flat_img // 20 * 20
-    unique, counts = np.unique(flat_img_round, axis=0, return_counts=True)
-    colors = np.zeros((5, 3), dtype=int)
-    if len(unique) < 10:
-        return colors
-    # Sort list
-    sorted_count = np.sort(counts)[::-1]
-    # Get index of the most common colors
-    for i in range(0, 5):
-        index = np.where(counts == sorted_count[i])[0][0]
-        colors[i] = unique[index]
-    return colors
-
-
-# Match unit based on color
-def match_unit(filename, ref_colors, ref_units):
-    unit_colors = get_color(filename, crop=True)
-    # Find closest match (mean squared error)
-    for color in unit_colors:
-        mse = np.sum((ref_colors - color) ** 2, axis=1)
-        # Dryad sometimes needs 2000 to match
-        if mse[mse.argmin()] <= 2000:
-            return ref_units[mse.argmin()], round(mse[mse.argmin()])
-    return ['empty.png', 2001]
-
-
-def orb_match_unit(filename, ref_units, unit_data):
-    keypoints, descriptors = get_image_keypoints_and_descriptors(filename)
+def orb_match_unit(img, ref_units, unit_data):
+    keypoints, descriptors = get_image_keypoints_and_descriptors(img)
     best_unit_name = 'empty'
     best_unit_matches = 0
+    best_unit_confidence = 0
 
     for unit_name, unit_info in unit_data.items():
         target_ref = False
@@ -124,6 +93,7 @@ def orb_match_unit(filename, ref_units, unit_data):
             if len(matches_mask) > best_unit_matches:
                 best_unit_matches = len(matches_mask)
                 best_unit_name = unit_name
+                best_unit_confidence = round(np.sum(mask) / mask.size, 3)
 
     # DO IT FOR SHARPSHOOTER_MAX TOO?!
     if best_unit_name == 'sharpshooter_active':
@@ -131,29 +101,31 @@ def orb_match_unit(filename, ref_units, unit_data):
     elif best_unit_name == 'crystal_high_arcanist':
         best_unit_name = 'crystal'
 
-    return [f'{best_unit_name}.png', 2001]
-
+    return [f'{best_unit_name}.png', best_unit_confidence]
 
 
 # Get status of current grid
 # Currently 0.082 seconds call, multithreading is about 0.64 seconds
-def grid_status(names, unit_data, prev_grid=None):
-    ref_units = os.listdir('units')
-    # ref_colors = [get_color('units/' + unit)[0] for unit in ref_units]
+def grid_status(ref_units, crop_img_data, unit_data, prev_grid=None):
     grid_stats = []
-    for filename in names:
-        rank, rank_prob = match_rank(filename)
-        # unit_guess = match_unit(filename, ref_colors, ref_units) if rank != 0 else ['empty.png', 0]
-        unit_guess = orb_match_unit(filename, ref_units, unit_data) if rank != 0 else ['empty.png', 0]
+    debug = False
+    x = 0
+    for img_name, img_data in crop_img_data.items():
+        if debug:
+            cv2.imwrite(f'test{x}.png', img_data)
+        x = x + 1
+
+        rank, rank_prob = match_rank(img_data)
+        unit_guess = orb_match_unit(img_data, ref_units, unit_data) if rank != 0 else ['empty.png', 0]
 
         # Curse does not work well for different ranks
-        # unit_guess = unit_guess if not is_cursed(filename) else ['cursed.png',0]
         grid_stats.append([*unit_guess, rank, rank_prob])
     grid_df = pd.DataFrame(grid_stats, columns=['unit', 'u_prob', 'rank', 'r_prob'])
     # Add grid position
     box_id = [[(i // 5) % 5, i % 5] for i in range(15)]
-    grid_df.insert(0, 'grid_pos', box_id)
-    if not prev_grid is None:
+    # grid_df.insert(0, 'grid_pos', box_id)
+    grid_df['grid_pos'] = box_id
+    if prev_grid is not None:
         # Check Consistency
         consistency = grid_df[['grid_pos', 'unit', 'rank']] == prev_grid[['grid_pos', 'unit', 'rank']]
         consistency = consistency.all(axis=1)
@@ -165,9 +137,9 @@ def grid_status(names, unit_data, prev_grid=None):
     return grid_df
 
 
-def match_rank(filename):
-    img = cv2.imread(filename, 0)
+def match_rank(img):
     edges = cv2.Canny(img, 50, 100)
+
     with open('rank_model.pkl', 'rb') as f:
         logreg = pickle.load(f)
         classes = logreg.classes_
@@ -192,37 +164,49 @@ def position_filter(grid_df, key_target='demon_hunter.png'):
 
 
 ## Add to dataset
-def add_grid_to_dataset():
-    for slot in os.listdir("OCR_inputs"):
-        target = f'OCR_inputs/{slot}'
-        img = cv2.imread(target, 0)
-        edges = cv2.Canny(img, 50, 100)
-        rank_guess = 0
-        unit_guess = match_unit(target)
-        if unit_guess[1] != 'empty.png':
-            rank_guess, _ = match_rank(target)
-        example_count = len(os.listdir("machine_learning/inputs"))
-        cv2.imwrite(f'machine_learning/inputs/{rank_guess}_input_{example_count}.png', edges)
-        cv2.imwrite(f'machine_learning/raw_input/{rank_guess}_raw_{example_count}.png', img)
+def add_grid_to_dataset_orig():
+    print('fix this')
+    # for slot in os.listdir("OCR_inputs"):
+    #     target = f'OCR_inputs/{slot}'
+    #     img = cv2.imread(target, 0)
+    #     edges = cv2.Canny(img, 50, 100)
+    #     rank_guess = 0
+    #     unit_guess = match_unit(target)
+    #     if unit_guess[1] != 'empty.png':
+    #         rank_guess, _ = match_rank(target)
+    #     example_count = len(os.listdir("machine_learning/inputs"))
+    #     cv2.imwrite(f'machine_learning/inputs/{rank_guess}_input_{example_count}.png', edges)
+    #     cv2.imwrite(f'machine_learning/raw_input/{rank_guess}_raw_{example_count}.png', img)
+
+
+
+# Add to dataset
+def add_grid_to_dataset(selected_units):
+    if not os.path.isdir('debug'):
+        os.mkdir('debug')
+
+    for img_name, img_data in selected_units.items():
+        filename = f"{uuid.uuid4()}.png"
+        cv2.imwrite(f'debug/{filename}', img_data)
 
 
 def load_dataset(folder):
-    X_train = []
-    Y_train = []
+    x_train = []
+    y_train = []
     for file in os.listdir(folder):
         if file.endswith(".png"):
-            X_train.append(cv2.imread(folder + file, 0))
-            Y_train.append(file.split('_input')[0])
-    X_train = np.array(X_train)
-    data_shape = X_train.shape
-    X_train = X_train.reshape(data_shape[0], data_shape[1] * data_shape[2])
-    Y_train = np.array(Y_train, dtype=int)
-    return X_train, Y_train
+            x_train.append(cv2.imread(folder + file, 0))
+            y_train.append(file.split('_input')[0])
+    x_train = np.array(x_train)
+    data_shape = x_train.shape
+    x_train = x_train.reshape(data_shape[0], data_shape[1] * data_shape[2])
+    y_train = np.array(y_train, dtype=int)
+    return x_train, y_train
 
 
 def quick_train_model():
-    X_train, Y_train = load_dataset("machine_learning\\inputs\\")
+    x_train, y_train = load_dataset("machine_learning\\inputs\\")
     # train logistic regression model
     logreg = LogisticRegression()
-    logreg.fit(X_train, Y_train)
+    logreg.fit(x_train, y_train)
     return logreg

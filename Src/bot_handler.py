@@ -1,21 +1,19 @@
-import os
-import time
-import numpy as np
-import logging
-from subprocess import Popen, DEVNULL
-# Image processing
-import cv2
-# internal
-import port_scan
-import bot_core
-import bot_perception
-
-import zipfile
 import functools
+import os
 import pathlib
 import shutil
+import time
+import zipfile
+
+# Image processing
+import cv2
+import numpy as np
 import requests
 from tqdm.auto import tqdm
+
+# internal
+import bot_core
+import bot_perception
 
 
 # from here https://stackoverflow.com/a/63831344
@@ -39,7 +37,7 @@ def download(url, filename):
 
 
 # Moves selected units from collection folder to deck folder for unit recognition options
-def select_units(units):
+def select_units_old(units):
     if os.path.isdir('units'):
         [os.remove(os.path.join('units', unit)) for unit in os.listdir('units')]
     else:
@@ -62,6 +60,15 @@ def select_units(units):
             continue
     # Verify enough units were selected
     return len(os.listdir('units')) > 4
+
+
+def select_units(units):
+    if 'sharpshooter.png' in units:
+        units.append('sharpshooter_active.png')
+    if 'crystal.png' in units:
+        units.append('crystal_high_arcanist.png')
+
+    return units
 
 
 def start_bot_class(logger):
@@ -169,7 +176,7 @@ def bot_loop(bot, info_event):
             info_event.set()
             # Wait until late stage in combat then if consistency is ok and not stagnate save all units for ML model
             if combat == 25 and 5 < grid_df['Age'].mean() < 50 and train_ai:
-                bot_perception.add_grid_to_dataset()
+                bot_perception.add_grid_to_dataset(bot.selected_units_crop)
         elif output[1] == 'home':
             if watch_ad:
                 [bot.watch_ads() for i in range(3)]
