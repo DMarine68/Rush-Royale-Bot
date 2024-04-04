@@ -4,6 +4,7 @@ import threading
 import traceback
 from tkinter import *
 
+import cv2
 import numpy as np
 
 # internal
@@ -259,6 +260,18 @@ class RR_bot:
 ### END OF GUI CLASS
 ###
 
+def save_grid(self):
+    if self.bot_instance is None:
+        self.logger.info('Bot isn\'t started!')
+        return
+
+    if not os.path.isdir('debug'):
+        os.mkdir('debug')
+
+    for name, img in self.bot_instance.selected_units_crop.items():
+        cv2.imwrite(f'debug/{name}.png', img)
+    self.logger.info('Done saving images!')
+
 
 def create_options(self, frame, config):
     frame.grid_rowconfigure(0, weight=1)
@@ -346,7 +359,7 @@ def create_options(self, frame, config):
 
     Entry(frame, name='floor_entry', textvariable=self.floor, width=5).grid(row=4, column=1)
 
-    # Button(frame, text='test', command=lambda: self.save_config(self)).grid(row=4, column=1)
+    Button(frame, text='dump imgs', command=lambda: save_grid(self)).grid(row=4, column=2)
 
 def create_base():
     root = Tk()

@@ -12,6 +12,7 @@ import cv2
 # internal
 import bot_perception
 import port_scan
+import time
 
 SLEEP_DELAY = 0.1
 
@@ -19,12 +20,15 @@ SLEEP_DELAY = 0.1
 class Bot:
 
     def __init__(self, device=None):
+        self.screenRGB = None
+        self.loaded_icons = None
         self.bot_stop = False
         self.combat = self.output = self.grid_df = self.unit_series = self.merge_series = self.df_groups = None
         self.info = self.combat_step = None
         self.unit_data = bot_perception.get_unit_data()
         self.selected_units_crop = {}
         self.selected_units = []
+        self.last_screen_time = 0
 
         self.logger = logging.getLogger('__main__')
         if device is None:
@@ -36,10 +40,6 @@ class Bot:
         self.shell(f'.scrcpy\\adb connect {self.device}')
         # Try to launch application through ADB shell
         self.shell('monkey -p com.my.defense 1')
-        # Check if 'bot_feed.png' exists
-        if not os.path.isfile(f'bot_feed_{self.bot_id}.png'):
-            self.get_screen()
-        self.screenRGB = cv2.imread(f'bot_feed_{self.bot_id}.png')
         self.client = Client(device=self.device)
         # Start scrcpy client
         self.client.start(threaded=True)
@@ -97,6 +97,7 @@ class Bot:
 
     # Take screenshot of device screen and load pixel values
     def get_screen(self):
+        t1 = time.time()
         bot_id = self.device.split(':')[-1]
         cmd = ['.scrcpy\\adb', 'exec-out', 'screencap', '-p']
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -115,6 +116,13 @@ class Bot:
             self.screenRGB = new_img
         else:
             self.logger.warning('Failed to get screen')
+        t = time.time()
+        elapsed_time = t - self.last_screen_time
+        elapsed_time2 = t - t1
+        if elapsed_time <= 0: elapsed_time = 0
+        print(f'time since last screenshot: {elapsed_time}')
+        print(f'time took for screenshot: {elapsed_time2}')
+        self.last_screen_time = t
 
     # Crop latest screenshot taken
     def crop_img(self, x, y, dx, dy, name='icon.png'):
@@ -156,30 +164,37 @@ class Bot:
         closest_state = store_mse.argmin()
         return store_states_names[closest_state]
 
+    def load_icons_to_memory(self, path='icons'):
+        if self.loaded_icons is not None:
+            return self.loaded_icons
+
+        self.loaded_icons = {}
+        for target in os.listdir(path):
+            print(f'{path}/{target}')
+            self.loaded_icons[target] = cv2.imread(f'{path}/{target}', 0)
+
     # Check if any icons are on screen
-    def get_current_icons(self, new=True, available=False, dir="icons"):
+    def get_current_icons(self, new=True, available=False, dir='icons'):
         current_icons = []
         # Update screen and load screenshot as grayscale
         if new:
             self.get_screen()
         img_rgb = self.screenRGB
         img_gray = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2GRAY)
+        self.load_icons_to_memory(dir)
+
         # Check every target in dir
-        for target in os.listdir(dir):
-            x = 0  # reset position
-            y = 0
-            # Load icon
-            imgSrc = f'{dir}/{target}'
-            template = cv2.imread(imgSrc, 0)
+        for icon_name, icon_img in self.loaded_icons.items():
+            x = y = 0  # reset position
             # Compare images
-            res = cv2.matchTemplate(img_gray, template, cv2.TM_CCOEFF_NORMED)
+            res = cv2.matchTemplate(img_gray, icon_img, cv2.TM_CCOEFF_NORMED)
             threshold = 0.8
             loc = np.where(res >= threshold)
             icon_found = len(loc[0]) > 0
             if icon_found:
                 y = loc[0][0]
                 x = loc[1][0]
-            current_icons.append([target, icon_found, (x, y)])
+            current_icons.append([icon_name, icon_found, (x, y)])
         icon_df = pd.DataFrame(current_icons, columns=['icon', 'available', 'pos [X,Y]'])
         # filter out only available buttons
         if available:
@@ -193,7 +208,6 @@ class Bot:
         if new:
             self.get_screen()
         box_list = boxes.reshape(15, 2)
-        names = []
 
         for i in range(len(box_list)):
             self.crop_img(*box_list[i], *box_size, i)
@@ -269,7 +283,7 @@ class Bot:
         return merge_df
 
     # Harley Merge target
-    def harley_merge(self, df_split, merge_series, target='knight_statue.png'):
+    def harley_merge(self, df_split, merge_series, target='knight_statue.png', target_rank=2):
         merge_df = None
         # Try to copy target
         hq_series = adv_filter_keys(merge_series, units='harlequin.png')
@@ -277,7 +291,7 @@ class Bot:
             hq_rank = hq_series.index.get_level_values('rank')
             for rank in hq_rank:
                 merge_series_target = adv_filter_keys(merge_series, units=['harlequin.png', target], ranks=rank)
-                if len(merge_series_target.index) == 2:
+                if len(merge_series_target.index) == target_rank:
                     merge_df = self.merge_special_unit(df_split, merge_series_target, special_type='harlequin.png')
                     break
         return merge_df
@@ -316,6 +330,7 @@ class Bot:
         # Remove empty groups
         merge_series = adv_filter_keys(merge_series, units='empty.png', remove=True)
 
+        t = time.time()
         if self.block_merging():
             return grid_df, unit_series, merge_series, merge_df, info
         else:
@@ -328,8 +343,8 @@ class Bot:
             if merge_target == 'demon_hunter.png':
                 # Use harley on DHs starting from rank 2
                 self.harley_merge(df_split, merge_series, target=merge_target)
-                # Keep all DHs on the board starting from rank 2
-                num_dh = sum(adv_filter_keys(merge_series, ranks=[2, 3, 4, 5, 6, 7], units='demon_hunter.png'))
+                # Keep all DHs on the board starting from rank 3
+                num_dh = sum(adv_filter_keys(merge_series, ranks=[3, 4, 5, 6, 7], units='demon_hunter.png'))
                 # Take a backup of the merge series before removing DH
                 merge_series_with_dh = merge_series
                 for i in range(num_dh):
@@ -338,6 +353,21 @@ class Bot:
                 # Keep all demons on the board if teammate runs shaman deck
                 if self.config.getboolean('bot', 'require_shaman'):
                     merge_series = adv_filter_keys(merge_series, units='demon_hunter.png', remove=True)
+
+            # =========  Monk
+            if merge_target == 'monk.png':
+                # Use harley on the monk starting from rank 3
+                self.harley_merge(df_split, merge_series, target=merge_target, target_rank=3)
+                # Keep all monks on the board starting from rank 3
+                num_monks = sum(adv_filter_keys(merge_series, ranks=[3, 4, 5, 6, 7], units='monk.png'))
+                # Take a backup of the merge series before removing DH
+                merge_series_with_monk = merge_series
+                for i in range(num_monks):
+                    merge_series = preserve_unit(merge_series, target='monk.png', keep_min=False)
+
+                # Keep all monks on the board if teammate runs shaman deck
+                if self.config.getboolean('bot', 'require_shaman'):
+                    merge_series = adv_filter_keys(merge_series, units='monk.png', remove=True)
 
             # ========= TRAPPER
             if 'trapper.png' in self.selected_units:
@@ -442,6 +472,7 @@ class Bot:
                         merge_df = self.merge_unit(df_split, merge_series)
             else:
                 info = 'need more units!'
+            print(f'Time for merging: {time.time() - t}')
             return grid_df, unit_series, merge_series, merge_df, info
 
     def block_merging(self):
@@ -859,6 +890,7 @@ def preserve_unit(unit_series, target='trapper.png', keep_min=False):
     param: target - target unit to keep
     param: keep_min - if true, keep the lowest rank unit instead of highest
     """
+    t = time.time()
     merge_series = unit_series.copy()
     preserve_series = adv_filter_keys(merge_series, units=target, remove=False)
     if not preserve_series.empty:
@@ -869,8 +901,10 @@ def preserve_unit(unit_series, target='trapper.png', keep_min=False):
         # Remove 1 count of highest/lowest rank
         merge_series[merge_series.index == pu] = merge_series[merge_series.index == pu] - 1
         # Remove 0 counts
+        print(f'Time for preserve 1: {time.time() - t}')
         return merge_series[merge_series > 0]
     else:
+        print(f'Time for preserve 2: {time.time() - t}')
         return merge_series
 
 
@@ -933,12 +967,12 @@ def adv_filter_keys(unit_series, units=None, ranks=None, remove=False):
     if unit_series.empty:
         return pd.Series(dtype=object)
     filtered_ranks = pd.Series(dtype=object)
-    if not units is None:
+    if units is not None:
         filtered_units = filter_units(unit_series, units)
     else:
         filtered_units = unit_series.copy()
     # if all units are filtered already, return empty series
-    if not ranks is None and not filtered_units.empty:
+    if ranks is not None and not filtered_units.empty:
         filtered_ranks = filter_units(filtered_units, ranks)
     else:
         filtered_ranks = filtered_units.copy()

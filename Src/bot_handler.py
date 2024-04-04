@@ -81,15 +81,15 @@ def start_bot_class(logger):
 
 # Loop for combat actions
 def combat_loop(bot, combat, grid_df, mana_targets, user_target='demon_hunter.png'):
-    time.sleep(0.2)
+    # time.sleep(0.2)
 
     if combat <= 1:
-        spawn_units(bot, num_units=5)
+        spawn_units(bot, 5)
     else:
         # Upgrade units
         bot.mana_level(mana_targets, combat, hero_power=True)
         # Spawn unit
-        spawn_units(bot, num_units=3)
+        spawn_units(bot, 3)
 
     # Try to merge units
     grid_df, unit_series, merge_series, df_groups, info = bot.try_merge(prev_grid=grid_df, merge_target=user_target)
@@ -147,7 +147,10 @@ def bot_loop(bot, info_event):
         bot.shop_item = shop_target
         bot.store_visited = False  # Reset the store_visited attribute at the beginning of each loop iteration
         # Fetch screen and check state
+        t1 = time.time()
         output = bot.battle_screen(start=False)
+        print(f'Time for battle_screen: {time.time() - t1}')
+
         if output[1] == 'fighting':
             watch_ad = user_ads
             clan_collect = user_clan_collect
@@ -167,8 +170,12 @@ def bot_loop(bot, info_event):
                 bot.logger.warning('Leaving game')
                 bot.restart_rr(quick_disconnect=True)
             # Combat Section
+
+            t2 = time.time()
             grid_df, bot.unit_series, bot.merge_series, bot.df_groups, bot.info = combat_loop(bot, combat, grid_df,
                                                                                               user_level, user_target)
+
+            print(f'Time for combat_loop: {time.time() - t2}')
             bot.grid_df = grid_df.copy()
             bot.combat = combat
             bot.output = output[1]
