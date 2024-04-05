@@ -37,7 +37,7 @@ class Bot:
             raise Exception('No device found!')
         self.device = device
         self.bot_id = self.device.split(':')[-1]
-        self.shell(f'.scrcpy\\adb connect {self.device}')
+        self.shell(f'.scrcpy/adb connect {self.device}')
         # Try to launch application through ADB shell
         self.shell('monkey -p com.my.defense 1')
         self.client = Client(device=self.device)
@@ -55,7 +55,7 @@ class Bot:
 
     # Function to send ADB shell command
     def shell(self, cmd):
-        p = Popen([".scrcpy\\adb", '-s', self.device, 'shell', cmd], stdout=DEVNULL, stderr=DEVNULL)
+        p = Popen([".scrcpy/adb", '-s', self.device, 'shell', cmd], stdout=DEVNULL, stderr=DEVNULL)
         p.wait()
 
     # Send ADB to click screen
@@ -99,7 +99,7 @@ class Bot:
     def get_screen(self):
         t1 = time.time()
         bot_id = self.device.split(':')[-1]
-        cmd = ['.scrcpy\\adb', 'exec-out', 'screencap', '-p']
+        cmd = ['.scrcpy/adb', 'exec-out', 'screencap', '-p']
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         img_data, err = proc.communicate()
         if err:
