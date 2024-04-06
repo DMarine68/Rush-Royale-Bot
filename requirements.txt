@@ -8,3 +8,6 @@ tqdm
 opencv-python
 ipywidgets
 pure-python-adb
+adbnativeblitz
+django
+channels

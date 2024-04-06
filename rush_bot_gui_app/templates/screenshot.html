@@ -1,0 +1,18 @@
+<script>
+  function fetchLatestScreenshot() {
+    fetch('/ss')  // Update this path as necessary
+      .then(response => response.json())
+      .then(data => {
+        document.getElementById('screenshot').src = data.image_url;
+      })
+      .catch(error => console.error('Error fetching the latest screenshot:', error));
+  }
+
+  // Fetch every 2 seconds, adjust as necessary
+  setInterval(fetchLatestScreenshot, 2000);
+</script>
+
+<div>
+    <h2>Phone Screenshot</h2>
+    <img id="screenshot" alt="Phone Screenshot">
+</div>
