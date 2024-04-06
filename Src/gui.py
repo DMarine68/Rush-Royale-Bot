@@ -188,7 +188,7 @@ class RR_bot:
     def start_bot(self):
         # Run startup of bot instance
         self.logger.warning('Starting bot...')
-        self.bot_instance = bot_handler.start_bot_class(self.logger)
+        self.bot_instance = bot_handler.start_bot_class(self.logger, self.config)
         path = os.path.join('src', 'startup_message.txt')
         os.system(f'type {path}')
 

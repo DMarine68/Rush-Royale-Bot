@@ -1,6 +1,5 @@
 import os
 import subprocess
-import time
 import numpy as np
 import pandas as pd
 import logging
@@ -19,7 +18,7 @@ SLEEP_DELAY = 0.1
 
 class Bot:
 
-    def __init__(self, device=None):
+    def __init__(self, config, device=None):
         self.screenRGB = None
         self.loaded_icons = None
         self.bot_stop = False
@@ -30,15 +29,18 @@ class Bot:
         self.selected_units = []
         self.last_screen_time = 0
         self.stop_flag = False
+        self.config = config
+        self.adb = os.path.join('.scrcpy', 'adb')
 
         self.logger = logging.getLogger('__main__')
         if device is None:
-            device = port_scan.get_device()
+            ps = port_scan.PortScan(self.adb, self.config)
+            device = ps.get_device()
         if not device:
             raise Exception('No device found!')
         self.device = device
         self.bot_id = self.device.split(':')[-1]
-        self.shell(f'.scrcpy\\adb connect {self.device}')
+        self.shell(f'{self.adb} connect {self.device}')
         # Try to launch application through ADB shell
         self.shell('monkey -p com.my.defense 1')
         self.client = Client(device=self.device)
@@ -56,7 +58,7 @@ class Bot:
 
     # Function to send ADB shell command
     def shell(self, cmd):
-        p = Popen([".scrcpy\\adb", '-s', self.device, 'shell', cmd], stdout=DEVNULL, stderr=DEVNULL)
+        p = Popen([self.adb, '-s', self.device, 'shell', cmd], stdout=DEVNULL, stderr=DEVNULL)
         p.wait()
 
     # Send ADB to click screen
@@ -102,7 +104,7 @@ class Bot:
     def get_screen(self):
         t1 = time.time()
         bot_id = self.device.split(':')[-1]
-        cmd = ['.scrcpy\\adb', '-s', self.device, 'exec-out', 'screencap', '-p']
+        cmd = [self.adb, '-s', self.device, 'exec-out', 'screencap', '-p']
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         img_data, err = proc.communicate()
         if err:
