@@ -24,6 +24,10 @@ class PortScan:
                 time.sleep(5)  # Give real client 5 seconds to connect
                 p.terminate()
 
+    def connect_device(self, target_device):
+        p = Popen([self.adb, 'connect', target_device])
+        p.wait()
+
     # Attempts to connect to ip over every port in range
     # Returns device if found
     def scan_ports(self, target_ip, port_start, port_end, batch=3):
@@ -46,7 +50,7 @@ class PortScan:
         # Get open ports
         port_list = list(open_ports.keys())
         print(f'Ports Open: {port_list}')
-        return self.get_adb_device() # return first device found
+        return self.get_adb_device()  # return first device found
 
     # Check if adb device is already connected
     def get_adb_device(self, target_serial=None):
@@ -72,7 +76,10 @@ class PortScan:
         serials = self.config.get('DEFAULT', 'serials', fallback='')
         serials.replace(' ', '')  # remove spaces
         serials_arr = serials.split(',')
-        return serials_arr[last_serial_index] if last_serial_index < len(serials_arr) else None
+        serial_data = serials_arr[last_serial_index] if last_serial_index < len(serials_arr) else None
+        if serial_data is None:
+            return None
+        return serial_data.split('-')[0]
 
     def is_device_online(self, device_serial):
         if device_serial is None:

@@ -33,9 +33,11 @@ class Bot:
         self.adb = os.path.join('.scrcpy', 'adb')
 
         self.logger = logging.getLogger('__main__')
+        ps = port_scan.PortScan(self.adb, self.config)
         if device is None:
-            ps = port_scan.PortScan(self.adb, self.config)
             device = ps.get_device()
+        else:
+            ps.connect_device(device)
         if not device:
             raise Exception('No device found!')
         self.device = device

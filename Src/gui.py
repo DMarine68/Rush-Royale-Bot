@@ -41,6 +41,9 @@ class RR_bot:
         self.mana_vars = [IntVar()]
         self.shop_vars = [IntVar()]
         self.floor = StringVar()
+        self.serials_var = StringVar()
+        self.serials_selected_var = StringVar()
+        self.serials_index_var = IntVar()
 
         self.grid_dump = None
         self.unit_dump = None
@@ -155,6 +158,24 @@ class RR_bot:
         shop_item = shop_item[shop_item != 0]
 
         self.config.read('config.ini')
+
+        serials = ['target device']
+        config_serials = self.serials_var.get()
+        config_serials = config_serials.replace(', ', ',')
+        config_serials_arr = config_serials.split(',')
+
+        for v in config_serials_arr:
+            data = v.split('-')
+            if data[0] == '':
+                continue
+            if len(data) <= 1:
+                serials.append(v)
+            else:
+                serials.append(f'[{data[1]}] {data[0]}')
+
+        selected_index = serials.index(self.serials_selected_var.get()) - 1
+        self.config['DEFAULT']['last_serial_index'] = str(selected_index)
+
         self.config['bot']['floor'] = str(self.floor.get())
         self.config['bot']['mana_level'] = np.array2string(card_level, separator=',')[1:-1]
         self.config['bot']['shop_item'] = np.array2string(shop_item, separator=',')[1:-1]
@@ -188,7 +209,13 @@ class RR_bot:
     def start_bot(self):
         # Run startup of bot instance
         self.logger.warning('Starting bot...')
-        self.bot_instance = bot_handler.start_bot_class(self.logger, self.config)
+        target_device = self.serials_selected_var.get()
+        if target_device == 'target device':
+            target_device = None
+        else:
+            target_device_arr = target_device.split(' ')
+            target_device = target_device_arr[-1]
+        self.bot_instance = bot_handler.start_bot_class(self.logger, self.config, target_device)
         path = os.path.join('src', 'startup_message.txt')
         os.system(f'type {path}')
 
@@ -289,6 +316,12 @@ def create_options(self, frame, config):
     self.clan_collect_var = IntVar(value=int(config.getboolean('bot', 'clan_collect', fallback=False)))
     self.request_epic_var = StringVar(value=str(config.get('bot', 'request_epic', fallback='')))
     self.request_common_rare_var = StringVar(value=str(config.get('bot', 'request_common_rare', fallback='')))
+    self.serials_var = StringVar(value=str(config.get('DEFAULT', 'serials', fallback='')))
+    self.serials_index_var = IntVar(value=int(config.getint('DEFAULT', 'last_serial_index', fallback=0)))
+
+    # make sure we don't go crazy here
+    if self.serials_index_var.get() < 0:
+        self.serials_index_var.set(0)
 
     Checkbutton(frame, text='PvE', variable=self.pve_var, justify=LEFT).grid(row=0, column=1, sticky=W)
     Checkbutton(frame, text='ADs', variable=self.ads_var, justify=LEFT).grid(row=0, column=2, sticky=W)
@@ -297,7 +330,7 @@ def create_options(self, frame, config):
     Checkbutton(frame, text='Treasure map gold', variable=self.treasure_map_gold_var,
                 justify=LEFT).grid(row=0, column=4, sticky=W)
     Checkbutton(frame, text='Req Shaman *For PvE ONLY*', variable=self.shaman_var,
-                justify=LEFT).grid(row=0, column=5,sticky=W)
+                justify=LEFT).grid(row=0, column=5, sticky=W)
 
     # Clan options
     Label(frame, text='Clan options', justify=LEFT).grid(row=1, column=0, sticky=W)
@@ -324,6 +357,29 @@ def create_options(self, frame, config):
     unit_dropdown_epic.grid(row=1, column=4, sticky=W)
     unit_dropdown_common_rare = OptionMenu(frame, self.request_common_rare_var, *unit_files_common_rare)
     unit_dropdown_common_rare.grid(row=1, column=5, sticky=W)
+
+    serials = ['target device']
+    config_serials = self.serials_var.get()
+    config_serials = config_serials.replace(', ', ',')
+    config_serials_arr = config_serials.split(',')
+    config_selected_serial = self.serials_index_var.get()
+
+    for v in config_serials_arr:
+        data = v.split('-')
+        if data[0] == '':
+            continue
+        if len(data) <= 1:
+            serials.append(v)
+        else:
+            serials.append(f'[{data[1]}] {data[0]}')
+
+    if config_selected_serial < len(serials) - 1:
+        self.serials_selected_var.set(serials[config_selected_serial + 1])
+    else:
+        self.serials_selected_var.set('target device')
+
+    target_device = OptionMenu(frame, self.serials_selected_var, *serials)
+    target_device.grid(row=1, column=3, sticky=W)
 
     # Set the default value to the placeholder text only if request_epic_var is empty
     if not self.request_epic_var.get():
@@ -361,6 +417,7 @@ def create_options(self, frame, config):
     Entry(frame, name='floor_entry', textvariable=self.floor, width=5).grid(row=4, column=1)
 
     Button(frame, text='dump imgs', command=lambda: save_grid(self)).grid(row=4, column=2)
+
 
 def create_base():
     root = Tk()

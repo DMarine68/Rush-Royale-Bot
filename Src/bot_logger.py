@@ -121,11 +121,11 @@ class CustomFormatter(logging.Formatter):
 
 # function used by bot gui to create color coded logs
 def create_log_feed(log_feed):
-    logging.basicConfig(filename='RR_bot.log', level=logging.DEBUG)
+    logging.basicConfig(filename='RR_bot.log', level=logging.DEBUG, filemode='w')
     logger = logging.getLogger(__name__)
     logger.handlers.clear()
-    guiHandler = TextHandler(log_feed)
+    gui_handler = TextHandler(log_feed)
     formatter = CustomFormatter()
-    guiHandler.setFormatter(formatter)
-    logger.addHandler(guiHandler)
+    gui_handler.setFormatter(formatter)
+    logger.addHandler(gui_handler)
     return logger

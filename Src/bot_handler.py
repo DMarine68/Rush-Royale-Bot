@@ -71,11 +71,11 @@ def select_units(units):
     return units
 
 
-def start_bot_class(logger, config):
+def start_bot_class(logger, config, target_device):
     # auto-install scrcpy if needed
     if not check_scrcpy(logger):
         return None
-    bot = bot_core.Bot(config)
+    bot = bot_core.Bot(config, target_device)
     return bot
 
 
