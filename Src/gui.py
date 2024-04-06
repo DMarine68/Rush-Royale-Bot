@@ -226,6 +226,7 @@ class RR_bot:
     def stop_bot(self):
         self.running = False
         self.stop_flag = True
+        self.bot_instance.stop_flag = True
         self.logger.info('Stopping bot!')
 
     # Leave current game

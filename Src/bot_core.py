@@ -29,6 +29,7 @@ class Bot:
         self.selected_units_crop = {}
         self.selected_units = []
         self.last_screen_time = 0
+        self.stop_flag = False
 
         self.logger = logging.getLogger('__main__')
         if device is None:
@@ -90,16 +91,18 @@ class Bot:
             return
         # Force kill game through ADB shell
         self.shell('am force-stop com.my.defense')
-        time.sleep(2)
+        # time.sleep(2)
+        self.wait(2)
         # Launch application through ADB shell
         self.shell('monkey -p com.my.defense 1')
-        time.sleep(10)  # wait for app to load
+        # time.sleep(10)  # wait for app to load
+        self.wait(10)
 
     # Take screenshot of device screen and load pixel values
     def get_screen(self):
         t1 = time.time()
         bot_id = self.device.split(':')[-1]
-        cmd = ['.scrcpy\\adb', 'exec-out', 'screencap', '-p']
+        cmd = ['.scrcpy\\adb', '-s', self.device, 'exec-out', 'screencap', '-p']
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         img_data, err = proc.communicate()
         if err:
@@ -128,6 +131,19 @@ class Bot:
     def crop_img(self, x, y, dx, dy, name='icon.png'):
         img_rgb = self.screenRGB  # the screenshot, in memory
         self.selected_units_crop[name] = img_rgb[y:y + dy, x:x + dx]
+
+    def wait(self, timeout=10):
+        x = 0
+        while True:
+            if self.stop_flag:
+                break
+            x += 1
+            time.sleep(1)
+
+            if x > timeout:
+                break
+
+
 
     def get_mana(self):
         # return int(self.getText(220, 1360, 90, 50, new=False, digits=True))
@@ -343,8 +359,8 @@ class Bot:
             if merge_target == 'demon_hunter.png':
                 # Use harley on DHs starting from rank 2
                 self.harley_merge(df_split, merge_series, target=merge_target)
-                # Keep all DHs on the board starting from rank 3
-                num_dh = sum(adv_filter_keys(merge_series, ranks=[3, 4, 5, 6, 7], units='demon_hunter.png'))
+                # Keep all DHs on the board starting from rank 2
+                num_dh = sum(adv_filter_keys(merge_series, ranks=[2, 3, 4, 5, 6, 7], units='demon_hunter.png'))
                 # Take a backup of the merge series before removing DH
                 merge_series_with_dh = merge_series
                 for i in range(num_dh):
@@ -357,7 +373,7 @@ class Bot:
             # =========  Monk
             if merge_target == 'monk.png':
                 # Use harley on the monk starting from rank 3
-                self.harley_merge(df_split, merge_series, target=merge_target, target_rank=3)
+                self.harley_merge(df_split, merge_series, target=merge_target)
                 # Keep all monks on the board starting from rank 3
                 num_monks = sum(adv_filter_keys(merge_series, ranks=[3, 4, 5, 6, 7], units='monk.png'))
                 # Take a backup of the merge series before removing DH
@@ -481,14 +497,16 @@ class Bot:
             # Don't merge if curse is detected
             if 'curse.png' in df['icon'].values:
                 self.logger.info(f'Curse detected, not merging. Sleeping 30s')
-                time.sleep(30)
+                self.wait(30)
+                # time.sleep(30)
                 return True
 
             # Don't merge if Bedlam has spawned
             if 'bedlam.png' in df['icon'].values and 'bedlam_is_coming_pve.png' not in df[
                 'icon'].values and 'bedlam_is_coming_pvp.png' not in df['icon'].values:
                 self.logger.info(f'Bedlam spawned, not merging. Sleeping 10s')
-                time.sleep(10)
+                # time.sleep(10)
+                self.wait(10)
                 return True
         return False
 
@@ -501,7 +519,8 @@ class Bot:
             if 'puppeteer.png' in df['icon'].values and 'puppeteer_is_coming_pve.png' not in df[
                 'icon'].values and 'puppeteer_is_coming_pvp.png' not in df['icon'].values:
                 self.logger.info(f'Puppeteer spawned, not upgrading cards. Sleeping 10s')
-                time.sleep(10)
+                # time.sleep(10)
+                self.wait(10)
             else:
                 if combat > 10:
                     # Level each card
@@ -822,22 +841,25 @@ class Bot:
         else:
             self.logger.info('Watched all ads!')
             return
-        time.sleep(3)
+        # time.sleep(3)
+        self.wait(3)
         # Check if ad was started
         avail_buttons, status = self.battle_screen()
         if status == 'menu' or status == 'home' or (avail_buttons == 'refresh_button.png').any(axis=None):
             self.logger.info('FINISHED AD')
         # Watch ad
         else:
-            self.logger.debug(f'Waiting 30s')
-            time.sleep(30)
+            self.logger.debug(f'Waiting 60s')
+            # time.sleep(60)
+            self.wait(60)
             # Keep watching until back in menu
             for i in range(10):
                 avail_buttons, status = self.battle_screen()
                 if status == 'menu' or status == 'home':
                     self.logger.info('FINISHED AD')
                     return  # Exit function
-                time.sleep(2)
+                # time.sleep(2)
+                self.wait(2)
                 self.click(870, 30)  # skip forward/click X
                 self.click(870, 100)  # click X playstore popup
                 if i > 5:
