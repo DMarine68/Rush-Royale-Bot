@@ -38,14 +38,14 @@ class RR_bot:
         self.shaman_var = IntVar()
         self.treasure_map_green_var = IntVar()
         self.treasure_map_gold_var = IntVar()
+        self.units = [StringVar(value="") for i in range(5)]
         self.mana_vars = [IntVar(value=True) for i in range(5)]
         self.shop_vars = [IntVar(value=True) for i in range(6)]
         self.floor = StringVar()
-        self.serials_var = StringVar()
-        self.serials_selected_var = StringVar()
-        self.serials_index_var = IntVar()
+        self.serial = StringVar()
+        self.available_configs_var = StringVar()
+        self.selected_config_var = StringVar(value='default')
         self.config_section = 'bot'
-        # self.serials_selected_var.trace('w', self.on_serial_changed)
 
         self.grid_dump = None
         self.unit_dump = None
@@ -152,18 +152,9 @@ class RR_bot:
         self.thread_run = threading.Thread(target=self.start_bot, args=())
         self.thread_run.start()
 
-    def get_serials_as_array(self):
-        serials = ['target device']
-        config_serials = self.serials_var.get()
-        config_serials = config_serials.replace(', ', ',')
-        return config_serials.split(',')
-
     def on_serial_changed(self, new_val):
-        new_val_data = new_val[1:].replace('] ', ',')
-        new_val_data2 = new_val_data.split(',')
-
-        new_section = 'bot' if len(new_val_data2) <= 1 else new_val_data2[0]
-
+        available_configs = self.available_configs_var.get().split(',')
+        new_section = new_val if new_val in available_configs else 'bot'
         self.config_section = new_section
         print(f'changed config: {new_section}')
         read_config(self, self.config)
@@ -176,15 +167,16 @@ class RR_bot:
         card_level = card_level[card_level != 0]
         shop_item = np.array([var.get() for var in self.shop_vars]) * np.arange(1, 7)
         shop_item = shop_item[shop_item != 0]
+        units = [var.get() for var in self.units]
 
         self.config.read('config.ini')
 
-        sel_ser = self.serials_selected_var.get()
-        new_val_data = sel_ser[1:].replace('] ', ',')
-        new_val_data2 = new_val_data.split(',')
-        section = 'bot' if len(new_val_data2) <= 1 else new_val_data2[0]
+        selected_config = self.selected_config_var.get()
+        section = selected_config if selected_config in self.available_configs_var.get().split(',') else 'bot'
 
         self.config[section]['floor'] = str(self.floor.get())
+        self.config[section]['serial'] = self.serial.get()
+        self.config[section]['units'] = ', '.join(units)
         self.config[section]['mana_level'] = np.array2string(card_level, separator=',')[1:-1]
         self.config[section]['shop_item'] = np.array2string(shop_item, separator=',')[1:-1]
         self.config[section]['pve'] = str(bool(self.pve_var.get()))
@@ -205,7 +197,7 @@ class RR_bot:
 
     # Update unit selection
     def update_units(self):
-        self.selected_units = self.config[self.config_section]['units'].replace(' ', '').split(',')
+        self.selected_units = [u.get() for u in self.units]
         self.logger.info(f'Selected units: {", ".join(self.selected_units)}')
         self.selected_units = bot_handler.select_units([unit + '.png' for unit in self.selected_units])
 
@@ -217,12 +209,8 @@ class RR_bot:
     def start_bot(self):
         # Run startup of bot instance
         self.logger.warning('Starting bot...')
-        target_device = self.serials_selected_var.get()
-        if target_device == 'target device':
-            target_device = None
-        else:
-            target_device_arr = target_device.split(' ')
-            target_device = target_device_arr[-1]
+        selected_config = self.selected_config_var.get()
+        target_device = self.config.get(selected_config, 'serial', fallback=None)
         self.bot_instance = bot_handler.start_bot_class(self.logger, self.config, target_device)
         path = os.path.join('src', 'startup_message.txt')
         os.system(f'type {path}')
@@ -292,9 +280,9 @@ class RR_bot:
             write_to_widget(self.root, self.merge_dump, merge_series.to_string())
 
 
-###
-### END OF GUI CLASS
-###
+# ================================================================================
+# =============================== END OF GUI CLASS ===============================
+# ================================================================================
 
 def save_grid(self):
     if self.bot_instance is None:
@@ -319,12 +307,10 @@ def read_config(self, config):
     self.clan_collect_var.set(int(config.getboolean(self.config_section, 'clan_collect', fallback=False)))
     self.request_epic_var.set(str(config.get(self.config_section, 'request_epic', fallback='')))
     self.request_common_rare_var.set(str(config.get(self.config_section, 'request_common_rare', fallback='')))
-    self.serials_var.set(str(config.get('DEFAULT', 'serials', fallback='')))
-    # self.serials_index_var = IntVar(value=int(config.getint('DEFAULT', 'last_serial_index', fallback=0)))
 
-    # make sure we don't go crazy here
-    if self.serials_index_var.get() < 0:
-        self.serials_index_var.set(0)
+    sections = self.config.sections()
+    sections.remove('bot')
+    self.available_configs_var.set(','.join(sections))
 
     stored_values = np.fromstring(config[self.config_section]['mana_level'], dtype=int, sep=',')
     for i in range(len(self.mana_vars)):
@@ -334,6 +320,10 @@ def read_config(self, config):
     for i in range(len(self.shop_vars)):
         self.shop_vars[i].set(i + 1 in stored_values)
 
+    stored_values = config[self.config_section]['units'].replace(' ', '').split(',')
+    for i in range(len(self.units)):
+        self.units[i].set(stored_values[i])
+
     floor = str(config.get(self.config_section, 'floor', fallback="1"))
     tmp_floor = int(floor)
     if tmp_floor <= 0:
@@ -342,29 +332,47 @@ def read_config(self, config):
         floor = "13"
 
     self.floor.set(floor)
+    self.serial.set(config.get(self.config_section, 'serial', fallback=''))
 
 
 def create_options(self, frame, config):
     frame.grid_rowconfigure(0, weight=1)
     frame.grid_columnconfigure(0, weight=1)
 
+    # config
+    row = 0
+    # I purposely removed support for auto-selecting default config. Maybe I'll add it back in later?
+    # self.selected_config_var.set('config')
+
+    available_configs = self.available_configs_var.get().split(',')
+    Label(frame, text='Config', justify=LEFT).grid(row=row, column=0, sticky=W)
+    config = OptionMenu(frame, self.selected_config_var, *available_configs, command=self.on_serial_changed)
+    config.grid(row=row, column=1, sticky=W)
+
+    row = row + 1
+    Label(frame, text='Serial', justify=LEFT).grid(row=row, column=0, sticky=W)
+    Entry(frame, name='serial', textvariable=self.serial, width=20).grid(row=row, column=1)
+    Label(frame, text='(leave blank to auto detect)', justify=LEFT).grid(row=row, column=3, sticky=W)
+
     # General options
-    Label(frame, text='Options', justify=LEFT).grid(row=0, column=0, sticky=W)
-    Checkbutton(frame, text='PvE', variable=self.pve_var, justify=LEFT).grid(row=0, column=1, sticky=W)
-    Checkbutton(frame, text='ADs', variable=self.ads_var, justify=LEFT).grid(row=0, column=2, sticky=W)
+    row = row + 1
+    Label(frame, text='Options', justify=LEFT).grid(row=row, column=0, sticky=W)
+    Checkbutton(frame, text='PvE', variable=self.pve_var, justify=LEFT).grid(row=row, column=1, sticky=W)
+    Checkbutton(frame, text='ADs', variable=self.ads_var, justify=LEFT).grid(row=row, column=2, sticky=W)
     Checkbutton(frame, text='Treasure map green', variable=self.treasure_map_green_var,
-                justify=LEFT).grid(row=0, column=3, sticky=W)
+                justify=LEFT).grid(row=row, column=3, sticky=W)
     Checkbutton(frame, text='Treasure map gold', variable=self.treasure_map_gold_var,
-                justify=LEFT).grid(row=0, column=4, sticky=W)
+                justify=LEFT).grid(row=row, column=4, sticky=W)
     Checkbutton(frame, text='Req Shaman *For PvE ONLY*', variable=self.shaman_var,
-                justify=LEFT).grid(row=0, column=5, sticky=W)
+                justify=LEFT).grid(row=row, column=5, sticky=W)
 
     # Clan options
-    Label(frame, text='Clan options', justify=LEFT).grid(row=1, column=0, sticky=W)
+    row = row + 1
+    Label(frame, text='Clan options', justify=LEFT).grid(row=row, column=0, sticky=W)
     Checkbutton(frame, text='Collect', variable=self.clan_collect_var,
-                justify=LEFT).grid(row=1, column=1, sticky=W)
+                justify=LEFT).grid(row=row, column=1, sticky=W)
     Checkbutton(frame, text='Tourney', variable=self.clan_tournament_var,
-                justify=LEFT).grid(row=1, column=2, sticky=W)
+                justify=LEFT).grid(row=row, column=2, sticky=W)
 
     # Dropdown menu's for clan requests
     # Get the list of .png files for epic units in a folder (replace 'your_folder_path' with your actual folder path)
@@ -381,32 +389,9 @@ def create_options(self, frame, config):
 
     # Create the epic units dropdown menu with the modified list of options
     unit_dropdown_epic = OptionMenu(frame, self.request_epic_var, *unit_files_epic)
-    unit_dropdown_epic.grid(row=1, column=4, sticky=W)
+    unit_dropdown_epic.grid(row=row, column=4, sticky=W)
     unit_dropdown_common_rare = OptionMenu(frame, self.request_common_rare_var, *unit_files_common_rare)
-    unit_dropdown_common_rare.grid(row=1, column=5, sticky=W)
-
-    serials = ['target device']
-    config_serials = self.serials_var.get()
-    config_serials = config_serials.replace(', ', ',')
-    config_serials_arr = config_serials.split(',')
-    config_selected_serial = self.serials_index_var.get()
-
-    for v in config_serials_arr:
-        data = v.split('-')
-        if data[0] == '':
-            continue
-        if len(data) <= 1:
-            serials.append(v)
-        else:
-            serials.append(f'[{data[1]}] {data[0]}')
-
-    # if config_selected_serial < len(serials) - 1:
-    #     self.serials_selected_var.set(serials[config_selected_serial + 1])
-        # else:
-    self.serials_selected_var.set('target device')
-
-    target_device = OptionMenu(frame, self.serials_selected_var, *serials, command=self.on_serial_changed)
-    target_device.grid(row=1, column=3, sticky=W)
+    unit_dropdown_common_rare.grid(row=row, column=5, sticky=W)
 
     # Set the default value to the placeholder text only if request_epic_var is empty
     if not self.request_epic_var.get():
@@ -414,32 +399,46 @@ def create_options(self, frame, config):
     if not self.request_common_rare_var.get():
         self.request_common_rare_var.set(placeholder_common_rare)
 
+    # Unit Selection
+    row = row + 1
+    all_units = [f.replace('.png', '') for f in os.listdir('all_units') if f.endswith('.png')]
+    [all_units.remove(f) for f in ['empty', 'crystal_high_arcanist', 'crystal_max', 'sharpshooter_active',
+                                   'cultist_off']]
+    Label(frame, text='Test', justify=LEFT).grid(row=row, column=0, sticky=W)
+    [
+        OptionMenu(frame, self.units[i], *all_units).grid(row=row, column=i + 1)
+        for i in range(5)
+    ]
+
     # Mana level targets
-    Label(frame, text='Mana Level Targets', justify=LEFT).grid(row=2, column=0, sticky=W)
+    row = row + 1
+    Label(frame, text='Mana Level Targets', justify=LEFT).grid(row=row, column=0, sticky=W)
     [
         # Checkbutton(frame, text=f'Card {i + 1}', variable=self.mana_vars[i], justify=LEFT).grid(row=2, column=i + 1)
-        Checkbutton(frame, text=f'Card {i + 1}', variable=self.mana_vars[i], justify=LEFT).grid(row=2, column=i + 1)
+        Checkbutton(frame, text=f'Card {i + 1}', variable=self.mana_vars[i], justify=LEFT).grid(row=row, column=i + 1)
         for i in range(5)
     ]
 
     # Shop item targets
-    Label(frame, text='Shop Item Targets', justify=LEFT).grid(row=3, column=0, sticky=W)
+    row = row + 1
+    Label(frame, text='Shop Item Targets', justify=LEFT).grid(row=row, column=0, sticky=W)
     [
-        Checkbutton(frame, text=f'Shop {i + 1}', variable=self.shop_vars[i], justify=LEFT).grid(row=3, column=i + 1)
+        Checkbutton(frame, text=f'Shop {i + 1}', variable=self.shop_vars[i], justify=LEFT).grid(row=row, column=i + 1)
         for i in range(6)
     ]
 
     # Dungeon Floor
-    Label(frame, text='Dungeon Floor', justify=LEFT).grid(row=4, column=0, sticky=W)
-    Entry(frame, name='floor_entry', textvariable=self.floor, width=5).grid(row=4, column=1)
-    Button(frame, text='dump imgs', command=lambda: save_grid(self)).grid(row=4, column=2)
-    Button(frame, text='save config', command=lambda: self.save_config()).grid(row=4, column=3)
+    row = row + 1
+    Label(frame, text='Dungeon Floor', justify=LEFT).grid(row=row, column=0, sticky=W)
+    Entry(frame, name='floor_entry', textvariable=self.floor, width=5).grid(row=row, column=1)
+    Button(frame, text='dump imgs', command=lambda: save_grid(self)).grid(row=row, column=2)
+    Button(frame, text='save config', command=lambda: self.save_config()).grid(row=row, column=3)
 
 
 def create_base():
     root = Tk()
     root.title('RR bot')
-    root.geometry('800x600')
+    root.geometry('800x715')
     root.configure(background='#575559')
     root.iconbitmap('calculon.ico')
     root.resizable(False, False)
