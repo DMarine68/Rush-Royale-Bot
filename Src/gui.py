@@ -3,6 +3,7 @@ import os
 import threading
 import traceback
 from tkinter import *
+from tkinter import messagebox, _setit
 
 import cv2
 import numpy as np
@@ -18,6 +19,31 @@ placeholder_common_rare = "Request common/rare unit"
 class Constants:
     BG_COLOR = '#575559'
     FG_COLOR = '#ffffff'
+
+
+class InputWindow(Toplevel):
+
+    def __init__(self, *args, callback=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.callback = callback
+        self.config(width=300, height=90)
+        # Disable the button for resizing the window.
+        self.resizable(0, 0)
+        self.title('Config Name')
+        self.entry_name = Entry(self)
+        self.entry_name.place(x=20, y=20, width=260)
+        self.button_done = Button(
+            self,
+            text='Done!',
+            command=self.button_done_pressed
+        )
+        self.button_done.place(x=20, y=50, width=260)
+        self.focus()
+        self.grab_set()
+
+    def button_done_pressed(self):
+        self.callback(self.entry_name.get())
+        self.destroy()
 
 
 # GUI Class
@@ -44,8 +70,8 @@ class RR_bot:
         self.floor = StringVar()
         self.serial = StringVar()
         self.available_configs_var = StringVar()
-        self.selected_config_var = StringVar(value='default')
-        self.config_section = 'bot'
+        self.selected_config_var = StringVar(value='bot')
+        self.config_option = None
 
         self.grid_dump = None
         self.unit_dump = None
@@ -130,6 +156,10 @@ class RR_bot:
 
         frame.pack(padx=10, pady=10, side=BOTTOM, anchor=SW)
 
+    def write_config(self):
+        with open('config.ini', 'w') as configfile:
+            self.config.write(configfile)
+
     def setup_logger_frame(self):
         frame = Frame(self.root)
         bg = Constants.BG_COLOR
@@ -155,7 +185,6 @@ class RR_bot:
     def on_serial_changed(self, new_val):
         available_configs = self.available_configs_var.get().split(',')
         new_section = new_val if new_val in available_configs else 'bot'
-        self.config_section = new_section
         print(f'changed config: {new_section}')
         read_config(self, self.config)
         pass
@@ -191,8 +220,7 @@ class RR_bot:
         self.config[section]['require_shaman'] = str(bool(self.shaman_var.get()))
         self.config[section]['treasure_map_green'] = str(bool(self.treasure_map_green_var.get()))
         self.config[section]['treasure_map_gold'] = str(bool(self.treasure_map_gold_var.get()))
-        with open('config.ini', 'w') as configfile:
-            self.config.write(configfile)
+        self.write_config()
         self.logger.info('Stored settings to config!')
 
     # Update unit selection
@@ -211,6 +239,8 @@ class RR_bot:
         self.logger.warning('Starting bot...')
         selected_config = self.selected_config_var.get()
         target_device = self.config.get(selected_config, 'serial', fallback=None)
+        if target_device.replace(' ', '') == '':
+            target_device = None
         self.bot_instance = bot_handler.start_bot_class(self.logger, self.config, target_device)
         path = os.path.join('src', 'startup_message.txt')
         os.system(f'type {path}')
@@ -279,6 +309,57 @@ class RR_bot:
             # merge_series['unit'] = merge_series['unit'].apply(lambda x: x.replace('.png',''))
             write_to_widget(self.root, self.merge_dump, merge_series.to_string())
 
+    def new_config_input(self, input):
+        if input == '':
+            messagebox.showerror('Name', f'Config name cannot be empty!')
+            return
+
+        available_configs = self.available_configs_var.get().split(',')
+        if input in available_configs or input == 'bot':
+            messagebox.showerror('Name', f'Config name already exists!')
+            return
+
+        self.config.add_section(input)
+        available_configs.append(input)
+        self.available_configs_var.set(','.join(available_configs))
+        # self.save_config()
+
+        self.config[input] = self.config[self.selected_config_var.get()]
+        self.write_config()
+
+        self.selected_config_var.set(input)
+        messagebox.showinfo('Success', f'Created config!')
+
+    def refresh_config_options(self):
+        available_configs = self.available_configs_var.get().split(',')
+
+        self.config_option['menu'].delete(0, 'end')
+        for config in available_configs:
+            self.config_option['menu'].add_command(label=config, command=_setit(self.selected_config_var, config,
+                                                                                self.on_serial_changed))
+
+    def new_config_section(self):
+        InputWindow(callback=self.new_config_input)
+
+    def delete_config(self):
+        selected_config = self.selected_config_var.get()
+
+        if selected_config == 'bot':
+            messagebox.showerror('Error', 'Unable to delete the bot config!')
+            return
+
+        res = messagebox.askyesnocancel('Delete Config', 'Are you sure you want to delete this config?')
+        if res:
+            available_configs = self.available_configs_var.get().split(',')
+            available_configs.remove(self.selected_config_var.get())
+            print(available_configs)
+            self.config.remove_section(self.selected_config_var.get())
+            self.available_configs_var.set(','.join(available_configs))
+            self.refresh_config_options()
+            self.selected_config_var.set(available_configs[0])
+            self.write_config()
+            read_config(self, self.config)
+
 
 # ================================================================================
 # =============================== END OF GUI CLASS ===============================
@@ -298,33 +379,33 @@ def save_grid(self):
 
 
 def read_config(self, config):
-    self.pve_var.set(int(config.getboolean(self.config_section, 'pve', fallback=False)))
-    self.ads_var.set(int(config.getboolean(self.config_section, 'watch_ad', fallback=False)))
-    self.shaman_var.set(int(config.getboolean(self.config_section, 'require_shaman', fallback=False)))
-    self.treasure_map_green_var.set(int(config.getboolean(self.config_section, 'treasure_map_green', fallback=False)))
-    self.treasure_map_gold_var.set(int(config.getboolean(self.config_section, 'treasure_map_gold', fallback=False)))
-    self.clan_tournament_var.set(int(config.getboolean(self.config_section, 'clan_tournament', fallback=False)))
-    self.clan_collect_var.set(int(config.getboolean(self.config_section, 'clan_collect', fallback=False)))
-    self.request_epic_var.set(str(config.get(self.config_section, 'request_epic', fallback='')))
-    self.request_common_rare_var.set(str(config.get(self.config_section, 'request_common_rare', fallback='')))
+    config_section = self.selected_config_var.get()
+    self.pve_var.set(int(config.getboolean(config_section, 'pve', fallback=False)))
+    self.ads_var.set(int(config.getboolean(config_section, 'watch_ad', fallback=False)))
+    self.shaman_var.set(int(config.getboolean(config_section, 'require_shaman', fallback=False)))
+    self.treasure_map_green_var.set(int(config.getboolean(config_section, 'treasure_map_green', fallback=False)))
+    self.treasure_map_gold_var.set(int(config.getboolean(config_section, 'treasure_map_gold', fallback=False)))
+    self.clan_tournament_var.set(int(config.getboolean(config_section, 'clan_tournament', fallback=False)))
+    self.clan_collect_var.set(int(config.getboolean(config_section, 'clan_collect', fallback=False)))
+    self.request_epic_var.set(str(config.get(config_section, 'request_epic', fallback='')))
+    self.request_common_rare_var.set(str(config.get(config_section, 'request_common_rare', fallback='')))
 
     sections = self.config.sections()
-    sections.remove('bot')
     self.available_configs_var.set(','.join(sections))
 
-    stored_values = np.fromstring(config[self.config_section]['mana_level'], dtype=int, sep=',')
+    stored_values = np.fromstring(config[config_section]['mana_level'], dtype=int, sep=',')
     for i in range(len(self.mana_vars)):
         self.mana_vars[i].set(i + 1 in stored_values)
 
-    stored_values = np.fromstring(config[self.config_section]['shop_item'], dtype=int, sep=',')
+    stored_values = np.fromstring(config[config_section]['shop_item'], dtype=int, sep=',')
     for i in range(len(self.shop_vars)):
         self.shop_vars[i].set(i + 1 in stored_values)
 
-    stored_values = config[self.config_section]['units'].replace(' ', '').split(',')
+    stored_values = config[config_section]['units'].replace(' ', '').split(',')
     for i in range(len(self.units)):
         self.units[i].set(stored_values[i])
 
-    floor = str(config.get(self.config_section, 'floor', fallback="1"))
+    floor = str(config.get(config_section, 'floor', fallback="1"))
     tmp_floor = int(floor)
     if tmp_floor <= 0:
         floor = "1"
@@ -332,7 +413,7 @@ def read_config(self, config):
         floor = "13"
 
     self.floor.set(floor)
-    self.serial.set(config.get(self.config_section, 'serial', fallback=''))
+    self.serial.set(config.get(config_section, 'serial', fallback=''))
 
 
 def create_options(self, frame, config):
@@ -346,12 +427,14 @@ def create_options(self, frame, config):
 
     available_configs = self.available_configs_var.get().split(',')
     Label(frame, text='Config', justify=LEFT).grid(row=row, column=0, sticky=W)
-    config = OptionMenu(frame, self.selected_config_var, *available_configs, command=self.on_serial_changed)
-    config.grid(row=row, column=1, sticky=W)
+    self.config_option = OptionMenu(frame, self.selected_config_var, *available_configs, command=self.on_serial_changed)
+    self.config_option.grid(row=row, column=1, sticky=W)
+    Button(frame, text='New', command=self.new_config_section).grid(row=row, column=3)
+    Button(frame, text='Delete', command=self.delete_config).grid(row=row, column=4)
 
     row = row + 1
     Label(frame, text='Serial', justify=LEFT).grid(row=row, column=0, sticky=W)
-    Entry(frame, name='serial', textvariable=self.serial, width=20).grid(row=row, column=1)
+    Entry(frame, name='serial', textvariable=self.serial, width=20).grid(row=row, column=1, columnspan=2, sticky=W)
     Label(frame, text='(leave blank to auto detect)', justify=LEFT).grid(row=row, column=3, sticky=W)
 
     # General options
